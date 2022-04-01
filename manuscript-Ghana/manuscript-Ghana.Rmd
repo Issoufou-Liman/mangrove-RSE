@@ -1,52 +1,1250 @@
 ---
 title: Short Paper
 author:
-  - name: Alice Anonymous
-    email: alice@example.com
-    affiliation: Some Institute of Technology
+  - name: Issoufou Liman Harou
+    email: issoufoul@gmail.com
+    affiliation: ICRAF-GOV, KU-ENV
     correspondingauthor: true
-    footnote: 1
-  - name: Bob Security
-    email: bob@example.com
-    affiliation: Another University
-  - name: Cat Memes
-    email: cat@example.com
-    affiliation: Another University
-    footnote: 2
-  - name: Derek Zoolander
-    email: derek@example.com
-    affiliation: Some Institute of Technology
-    footnote: 2
+  - name: Julliet Inyele 
+    email: inyelejuli@gmail.com
+    affiliation: KU-GEO
+  - name: Lalisa Duguma
+    email: l.duguma@cgiar.org
+    affiliation: ICRAF
 address:
-  - code: Some Institute of Technology
-    address: Department, Street, City, State, Zip
-  - code: Another University
-    address: Department, Street, City, State, Zip
-footnote:
-  - code: 1
-    text: "This is the first author footnote."
-  - code: 2
-    text: "Another author footnote."
+  - code: ICRAF-GOV
+    address: 'Governance and Landscapes, World Agroforestry (ICRAF), UN Avenue, Gigiri, Nairobi, Kenya, P.O.Box 30677-00100'
+  - code: KU-ENV
+    address: 'Department of Environmental Sciences, Kenyatta University, Kenya Drive, Nairobi, Kenya, P.O Box: 43844-00100'
+  - code: KU-GEO
+    address: 'Department of Geography, Kenyatta University, Kenya Drive, Nairobi, Kenya, P.O Box: 43844-00100'
 abstract: |
-  This is the abstract.
-
-  It consists of two paragraphs.
+  Remote sensing analysis and narratives from Ghana reported evidence of localized mangrove degradations. Despite the importance of mangrove forests for Ghana, the coverage of earth observation satellites, and computing facilities, accurate country-wide information on mangrove dynamics are lacking. The persistence of cloud cover is an important limiting factor for optical remote sensing in the coastal regions of Ghana. In this study, we identified 17 land cover categories and consider all available Landsat images acquired between 2000 and 2020 to study the dynamics of mangroves in Ghana. Considering the surface reflectance and brightness temperature bands, we harmonized the Landsat bands across sensors, used time series models to improve cloud detection and recovered the signal encoding the spectral behavior of land cover over time. Considering the land cover phenology, the shortages of Landsat images due to excessive cloud cover in the study area and the revisit time of Landsat satellite, we mosaiced the Landsat images within 30-days temporal windows. Based on the fitted image time series, we computed unsupervised classifications which we used along with ground control polygons to generate accurate land cover reference data. These were used as training and validation data to develop random forest classifiers for classification and change detection. The analysis of the root mean square error indicates that the accuracy of the fitted image time series increases with band wavelength and land cover seasonality. The accuracy assessment indicates an overall accuracy ranging between 0.94 and 0.95, and a Kappa ranging between 0.93 and 0.95 for the different land cover classifications. Mangroves have declined in some areas, whereas they have increased in others. Mangrove area, which have decrease over the last decade (2000- 2010), have increased during the previous decade (2010 - 2020). The gains experienced between 2010 and 2020, however, did not compensate for the lost the land cover experienced between 2000 and 2010. We identified four top most important land cover involved in mangroves conversion including forests with a high rate, croplands and natural vegetation mosaics and tree plantations with moderate rate and wetlands with a low rate. Better mangrove restoration and conservation policies are required to fully reverse the trend of mangrove decline in Ghana.
 keywords: 
-  - keyword1
-  - keyword2
-journal: "An awesome journal"
+  - Landsat Time-series
+  - Multitemporal
+  - Cloud Mask
+  - Land Cover Classification
+  - Change Detection
+  - Mangrove
+  - Google Earth Engine
+journal: "Remote Sensing of Environment"
 date: "`r Sys.Date()`"
 classoption: preprint, 3p, authoryear
-bibliography: mybibfile.bib
-linenumbers: false
+bibliography: bibliography.bib
+linenumbers: true
 numbersections: true
 # Use a CSL with `citation_package = "default"`
-# csl: https://www.zotero.org/styles/elsevier-harvard
+# csl: https://www.zotero.org/styles/remote-sensing-of-environment
+csl: remote-sensing-of-environment.csl
 output: 
   rticles::elsevier_article:
+    latex_engine: xelatex
     keep_tex: true
     citation_package: natbib
+link-citations: yes
+linkcolor: blue
+header-includes:
+  - \input{includes.tex}
+note: Replication files are available on the author's Github account (http://github.com/Issoufou-Liman).
 ---
+
+```{r Setting-the-Scene, echo=FALSE, cache=FALSE, include=FALSE}
+set.seed(123)
+
+if (!require("remotes")) {
+  install.packages("remotes")
+}
+if (!require("rgee")) {
+  remotes::install_github("r-spatial/rgee")
+}
+if(!require("tinytex")) {
+  install.packages("tinytex")
+  tinytex::install_tinytex()
+}
+## loading required packages ####
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  googledrive,
+  googleCloudStorageR,
+  rgee,
+  tidyverse,
+  grid,
+  gridExtra,
+  rgdal,
+  raster,
+  sf,
+  ggspatial,
+  kableExtra
+)
+
+ksource <- function(x, ...) {
+  source(purl(x, output = tempfile()), ...)
+}
+
+## Should local files with the same name be overwritten?
+overwrite_file = TRUE
+
+ee_Initialize(user = 'limanissoufou', drive = TRUE, gcs = FALSE)
+# ee_Initialize(email = params$email, drive = params$drive, gcs = params$gcs)
+
+asset_home = ee_get_assethome()
+
+source('source_files/ee/01_functions.R')
+source('source_files/ee/02_commonSpecs.R')
+
+if(!drive_folder_exists("Mangrove_Ghana_manuscript")){
+  drive_mkdir("Mangrove_Ghana_manuscript")
+}
+
+ee_manage_create(paste0(asset_home, '/Mangrove_Ghana_manuscript'), asset_type = "Folder", quiet = FALSE)
+
+asset_path <- paste0(asset_home, '/Mangrove_Ghana_manuscript')
+
+dir.create(file.path('source_files'))
+dir.create(file.path('source_files/ee'))
+dir.create(file.path('source_files/r'))
+dir.create(file.path('ee_output'))
+dir.create(file.path('ee_output/Ghana_waters_polygons'))
+dir.create(file.path('data_files'))
+dir.create(file.path('figures'))
+
+```
+
+<!-- ```{r ee-compute-01-unsupervised-classifications,include=FALSE,echo=FALSE,cache=FALSE} -->
+<!-- # Compute and save an unsupervised classification and save it to ee asset -->
+
+<!-- ##################/ Collection 1999 - 2020  ################### -->
+
+<!-- # source('rgee/functions/functions_Ghana.R') -->
+<!-- filteredLandsat =  collectLansatImages ('LSR', roiGhana, 1999, 2020, ee$List$sequence(1, 12), nDays, TRUE); -->
+
+<!-- filteredLandsat = ee$ImageCollection(filteredLandsat); -->
+
+<!-- # Some fixed variable for easy maintenance -->
+<!-- rawBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'temp', 'NDVI', 'NDWI')); -->
+
+<!-- filledHarmonic = harmonic_fill(filteredLandsat, rawBands, harmonics); -->
+
+<!-- # Plot the fitted model and the original data at the ROI. -->
+<!-- filledBands = rawBands$map(ee_utils_pyfunc(function(band){ -->
+<!--   return (ee$String(band)$cat('_')$cat('filled')); -->
+<!-- })); -->
+
+<!-- fittedBands = rawBands$map(ee_utils_pyfunc(function(band){ -->
+<!--   return (ee$String(band)$cat('_')$cat('fitted')); -->
+<!-- })); -->
+
+<!-- theseBands = rawBands$cat(filledBands)$cat(fittedBands); -->
+
+<!-- fitBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$ -->
+<!--   map(ee_utils_pyfunc(function(band){ -->
+<!--     return (ee$String(band)$cat('_')$cat('filled')); -->
+<!--   })); -->
+
+<!-- fittedHarmonic = harmonic_fit(filledHarmonic, fitBands, harmonics, lagDays); -->
+
+<!-- filledBands = fitBands$map(ee_utils_pyfunc(function(band){ -->
+<!--   return (ee$String(band)$cat('_')$cat('filled')); -->
+<!-- })); -->
+
+<!-- fittedBands = fitBands$map(ee_utils_pyfunc(function(band){ -->
+<!--   return (ee$String(band)$cat('_')$cat('fitted')); -->
+<!-- })); -->
+
+<!-- theseBands = fitBands$cat(filledBands)$cat(fittedBands); -->
+
+<!-- ##################/ Unsupervised classification 2000 - 2002  ################### -->
+
+<!-- classificationBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$ -->
+<!--   map(ee_utils_pyfunc(function(band){ -->
+<!--     return (ee$String(band)$cat('_')$cat('filled')$cat('_')$cat('fitted')); -->
+<!--   })); -->
+<!-- fittedHarmonic_2000 = fittedHarmonic$select(classificationBands)$ -->
+<!--   filterDate('2000-01-01', '2002-12-31'); -->
+
+<!-- bandSeries_2000 = fittedHarmonic_2000$toBands(); -->
+
+<!-- unsupervised_2000 = unsuperClassifyThis(bandSeries_2000, 17, AgScale, roiGhana, 8, 1000)#$rename('unsupervised_2000'); -->
+
+<!-- assetId = paste0(asset_path, '/unsupervised_2000') -->
+<!-- if(!asset_exists(assetId)){ -->
+<!--   task_img <- ee_image_to_asset( -->
+<!--     image = unsupervised_2000, -->
+<!--     description = "unsupervised_2000", -->
+<!--     assetId = assetId, -->
+<!--     overwrite = FALSE, -->
+<!--     region = roiGhana, -->
+<!--     scale = AgScale, -->
+<!--     maxPixels = 1e13 -->
+<!--   ) -->
+<!--   task_img$start() -->
+<!--   ee_monitoring(task_img) -->
+<!-- } -->
+<!-- ##################/ Unsupervised classification 2010 - 2012  ################### -->
+
+<!-- fittedHarmonic_2010 = fittedHarmonic$select(classificationBands)$ -->
+<!--   filterDate('2010-01-01', '2012-12-31'); -->
+
+<!-- bandSeries_2010 = fittedHarmonic_2010$toBands(); -->
+
+<!-- unsupervised_2010 = unsuperClassifyThis(bandSeries_2010, 17, AgScale, roiGhana, 8, 1000)$rename('unsupervised_2010'); -->
+
+<!-- assetId = paste0(asset_path, '/unsupervised_2010') -->
+<!-- if(!asset_exists(assetId)){ -->
+<!--   task_img <- ee_image_to_asset( -->
+<!--     image = unsupervised_2010, -->
+<!--     description = "unsupervised_2010", -->
+<!--     assetId = assetId, -->
+<!--     overwrite = FALSE, -->
+<!--     region = roiGhana, -->
+<!--     scale = AgScale, -->
+<!--     maxPixels = 1e13 -->
+<!--   ) -->
+<!--   task_img$start() -->
+<!--   ee_monitoring(task_img) -->
+<!-- } -->
+<!-- ##################/ Unsupervised classification 2018 - 2020  ################### -->
+
+<!-- fittedHarmonic_2018 = fittedHarmonic$select(classificationBands)$ -->
+<!--   filterDate('2018-01-01', '2020-12-31'); -->
+
+<!-- bandSeries_2018 = fittedHarmonic_2018$toBands(); -->
+
+<!-- unsupervised_2018 = unsuperClassifyThis(bandSeries_2018, 17, AgScale, roiGhana, 8, 1000)$rename('unsupervised_2018'); -->
+
+<!-- assetId = paste0(asset_path, '/unsupervised_2018') -->
+<!-- if(!asset_exists(assetId)){ -->
+<!--   task_img <- ee_image_to_asset( -->
+<!--     image = unsupervised_2018, -->
+<!--     description = "unsupervised_2018", -->
+<!--     assetId = assetId, -->
+<!--     overwrite = FALSE, -->
+<!--     region = roiGhana, -->
+<!--     scale = AgScale, -->
+<!--     maxPixels = 1e13 -->
+<!--   ) -->
+<!--   task_img$start() -->
+<!--   ee_monitoring(task_img) -->
+<!-- } -->
+<!-- ``` -->
+
+
+```{r ee-compute-02-referenceData,include=FALSE,echo=FALSE,cache=FALSE}
+assetId <- paste0(asset_path, "/Ghana_field_data")
+if(!asset_exists("Ghana_field_data", asset_path)){
+  source("source_files/ee/03_referenceData.R")
+  #### Unsupervised class identification and matching ####
+  
+  # The following images are made available only. This is for 2 raisins:
+  # To ensure reproducibility
+  # They are time consuming in computation
+  unsupervised_2000 = ee$Image('users/Liman/210311_unsupervised2000_Ghana');
+  unsupervised_2010 = ee$Image('users/Liman/210311_unsupervised2010_Ghana');
+  unsupervised_2018 = ee$Image('users/Liman/210311_unsupervised2018_Ghana');
+  # Map$addLayer(unsupervised_2000, list(palette = myPalette, min = 0, max = 16), 'unsupervised_2000', legend = FALSE);
+  # Map$addLayer(unsupervised_2010, list(palette = myPalette, min = 0, max = 16), 'unsupervised_2010', legend = FALSE);
+  # Map$addLayer(unsupervised_2018, list(palette = myPalette, min = 0, max = 16), 'unsupervised_2018', legend = FALSE);
+  
+  numPoints = 700
+  # Class identification and matching
+  past = 11; p10 = 11; przt = 11;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  
+  waterBodies = matches$
+    stratifiedSample(
+      numPoints = 250, # numPoints*3/8, 
+      region = waterZone, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Fresh water')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 0)
+      );
+    }));
+  # ee_print(waterBodies, 'waterBodies')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'waterBodies matches');
+  # Map$addLayer(waterBodies, list(color = 'blue'), 'waterBodies pts');
+  
+  past = 11; p10 = 11; przt = 11;
+  #  past = 9; p10 = 11; przt = 11;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  
+  waterBodies_2 = matches$
+    stratifiedSample(
+      numPoints = 100, # numPoints*1/8, 
+      region = waterZone_2, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Fresh water')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 0)
+      );
+    }));
+  # ee_print(waterBodies_2, 'waterBodies_2')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'waterBodies_2 matches');
+  # Map$addLayer(waterBodies_2, list(color = 'blue'), 'waterBodies_2 pts');
+  
+  ##############################
+  past = 11; p10 = 11; przt = 11;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  
+  seaWater_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*4/8, 
+      region = seaWaterZone_1$merge(seaWaterZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Non-fresh water')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 0)
+      );
+    }));
+  # ee_print(seaWater_1, 'seaWater_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(seaWater_1, list(color = 'green'), 'seaWater_1 pts');
+  
+  past = 9; p10 = 10; przt = 9;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  closeForests_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = closeForestZone_1$merge(closeForestZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Close forests')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 1)
+      );
+    }));
+  # ee_print(closeForests_1, 'closeForests_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'close forest');
+  # Map$addLayer(closeForests_1, list(color = 'green'), 'closeForests_1 pts');
+  
+  past = 0; p10 = 0; przt = 0;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'open forests matches');
+  
+  openForests_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2/5, 
+      region = openForestZone_1, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Open forests')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 2)
+      );
+    }));
+  # ee_print(openForests_1, 'openForests_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'openForests matches');
+  # Map$addLayer(openForests_1, list(color = 'green'), 'openForests_1 pts');
+  openForests_2 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2/5, 
+      region = openForestZone_2, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Open forests')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 2)
+      );
+    }));
+  # ee_print(openForests_2, 'openForests_2')
+  # Map$addLayer(openForests_2, list(color = 'green'), 'openForests_2 pts');
+  openForests_3 = matches$
+    stratifiedSample(
+      numPoints = numPoints*1/5, 
+      region = openForestZone_3, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Open forests')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 2)
+      );
+    }));
+  # ee_print(openForests_3, 'openForests_3')
+  # Map$addLayer(openForests_3, list(color = 'green'), 'openForests_3 pts');
+  
+  past = 6; p10 = 6; przt = 15;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches')
+  
+  woodySavannas_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = woodySavannaZone_1$merge(woodySavannaZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Woody savannas')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 3)
+      );
+    }));
+  # ee_print(woodySavannas_1, 'woodySavannas_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(woodySavannas_1, list(color = 'green'), 'woodySavannas_1 pts');
+  
+  past = 3; p10 = 2; przt = 16;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  
+  savannas_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = savannaZone_1$merge(savannaZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Savannas')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 4)
+      );
+    }));
+  # ee_print(savannas_1, 'savannas_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(savannas_1, list(color = 'green'), 'savannas_1 pts');
+  
+  past = 2; p10 = 2; przt = 2;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  closedShrubs_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = closedShrubsZone_1$merge(closedShrubsZone_2)$merge(closedShrubsZone_3), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Close shrublands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 5)
+      );
+    }));
+  # ee_print(closedShrubs_1, 'closedShrubs_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(closedShrubs_1, list(color = 'green'), 'closedShrubs_1 pts');
+  
+  
+  past = 5; p10 = 5; przt = 1;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  openShrubs_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = openShrubsZone_1$merge(openShrubsZone_2)$merge(openShrubsZone_3), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Open Shrublands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 6)
+      );
+    }));
+  # ee_print(openShrubs_1, 'openShrubs_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(openShrubs_1, list(color = 'green'), 'openShrubs_1 pts');
+  
+  past = 16; p10 = 16; przt = 2;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  grasslands_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = grasslandZone_1$merge(grasslandZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Grasslands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 7)
+      );
+    }));
+  # ee_print(grasslands_1, 'grasslands_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(grasslands_1, list(color = 'green'), 'grasslands_1 pts');
+  
+  #  past = 5; p10 = 5; przt = 5;
+  past = 2; p10 = 6; przt = 15;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  wetlands_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*1/5, 
+      region = wetlandsZone_1,
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Wetlands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 8)
+      );
+    }));
+  # ee_print(wetlands_1, 'wetlands_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(wetlands_1, list(color = 'green'), 'wetlands_1 pts');
+  
+  wetlands_2 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2/5, 
+      region = wetlandsZone_2$merge(wetlandsZone_3), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Wetlands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 8)
+      );
+    }));
+  # ee_print(wetlands_2, 'wetlands_2')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(wetlands_2, list(color = 'green'), 'wetlands_3 pts');
+  
+  wetlands_3 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2/5, 
+      region = wetlandsZone_3, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Wetlands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 8)
+      );
+    }));
+  # ee_print(wetlands_3, 'wetlands_3')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(wetlands_3, list(color = 'green'), 'wetlands_3 pts');
+  
+  past = 8; p10 = 8; przt = 8;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  mosaic_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = mosaicZone_1$merge(mosaicZone_2)$merge(mosaicZone_3), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Croplands')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 9)
+      );
+    }));
+  # ee_print(mosaic_1, 'mosaic_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(mosaic_1, list(color = 'green'), 'mosaic_1 pts');
+  
+  past = 8; p10 = 8; przt = 8;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  builtUp_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*3/5, 
+      region = builtUpZone_1, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Built-up')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 10)
+      );
+    }));
+  # ee_print(builtUp_1, 'builtUp_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(builtUp_1, list(color = 'green'), 'builtUp_1 pts');
+  builtUp_2 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2/5, 
+      region = builtUpZone_2, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Built-up')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 10)
+      );
+    }));
+  # ee_print(builtUp_2, 'builtUp_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(builtUp_2, list(color = 'green'), 'builtUp_2 pts');
+  past = 5; p10 = 1; przt = 5;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  croplandBimodal_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2.5/5, 
+      region = croplandBimodalZone_1$merge(croplandBimodalZone_2)$merge(croplandBimodalZone_3)$merge(croplandBimodalZone_4)$merge(croplandBimodalZone_5), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Mosaic')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 11)
+      );
+    }));
+  # ee_print(croplandBimodal_1, 'croplandBimodal_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'matches');
+  # Map$addLayer(croplandBimodal_1, list(color = 'green'), 'croplandBimodal_1 pts');
+  past = 16; p10 = 16; przt = 5;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  croplandUnimodal_1 = matches$
+    stratifiedSample(
+      numPoints = numPoints*2.5/5, 
+      region = croplandUnimodalZone_1$merge(croplandUnimodalZone_2), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Mosaic')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 11)
+      );
+    }));
+  # ee_print(croplandUnimodal_1, 'croplandUnimodal_1')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'croplandUnimodal matches');
+  
+  past = 8; p10 = 8; przt = 8;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  barren = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = barrenZone_1, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Barren')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 12)
+      );
+    }));
+  # ee_print(barren, 'barren')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'Barren matches');
+  # Map$addLayer(barren, list(color = 'green'), 'Barren pts');
+  
+  past = 9; p10 = 10; przt = 9;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  mangroves = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = mangroveZone_7$merge(mangroveZone_8)$merge(mangroveZone_9)$merge(mangroveZone_10)$merge(mangroveZone_11), 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Mangroves')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 13)
+      );
+    }));
+  # ee_print(mangroves, 'mangroves')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'Barren matches');
+  # Map$addLayer(mangroves, list(color = 'green'), 'mangroves pts');
+  # ee_print(mangroves, 'mangroves');
+  
+  past = 11; p10 = 11; przt = 11;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  saltMines = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = saltMineZone_1, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Salt mines')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 14)
+      );
+    }));
+  # ee_print(saltMines, 'saltMines')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'saltMines matches');
+  # Map$addLayer(saltMines, list(color = 'green'), 'saltMines pts');
+  
+  past = 7; p10 = 0; przt = 9;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  palmTrees = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = palmTreesZone, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Croplands trees')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 15)
+      );
+    }));
+  # ee_print(palmTrees, 'palmTrees')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'palmTrees matches');
+  # Map$addLayer(palmTrees, list(color = 'green'), 'palmTrees pts');
+  
+  past = 9; p10 = 12; przt = 9;
+  matches = unsupervised_2000$eq(past)$And(unsupervised_2010$eq(p10))$And(unsupervised_2018$eq(przt))$rename('matches');
+  riperianVegetation = matches$
+    stratifiedSample(
+      numPoints = numPoints, 
+      region = waterZone_2, 
+      scale = AgScale, 
+      classValues = list(0), 
+      classPoints = list(0),
+      
+      tileScale = 4, 
+      geometries = TRUE
+    )$map(ee_utils_pyfunc(function(ft){
+      return (
+        ft$set('class', 'Riperian vegetation')$
+          set('matches', NULL)$
+          set('past', past)$
+          set('p10', p10)$
+          set('present', przt)$
+          set('landcover', 16)
+      );
+    }));
+  # ee_print(riperianVegetation, 'riperianVegetation')
+  # Map$addLayer(matches, list(palette = list('white', 'red')), 'riperianVegetation matches');
+  # Map$addLayer(riperianVegetation, list(color = 'green'), 'riperianVegetation pts');
+  
+  Ghana_field_data = waterBodies$
+    merge(seaWater_1)$
+    merge(waterBodies_2)$
+    merge(closeForests_1)$
+    merge(openForests_1)$
+    merge(openForests_2)$
+    merge(openForests_3)$
+    merge(woodySavannas_1)$
+    merge(savannas_1)$
+    merge(closedShrubs_1)$
+    merge(openShrubs_1)$
+    merge(grasslands_1)$
+    merge(wetlands_1)$
+    merge(wetlands_2)$
+    merge(wetlands_3)$
+    merge(croplandBimodal_1)$
+    merge(builtUp_1)$
+    merge(builtUp_2)$
+    merge(mosaic_1)$
+    merge(barren)$
+    merge(saltMines)$
+    merge(mangroves)$
+    merge(croplandUnimodal_1)$
+    merge(palmTrees)$
+    merge(riperianVegetation);
+  
+  task_vector = ee_table_to_asset(
+    collection = Ghana_field_data,
+    description = "Ghana_field_data",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector) 
+}
+```
+
+```{r ee-compute-03-training-and-validation-1,include=FALSE,echo=FALSE,cache=FALSE}
+# Compute and save the training and validation samples to ee asset 
+###
+Ghana_field_data = ee$FeatureCollection(paste0(asset_path, '/Ghana_field_data'));
+Ghana_field_data = Ghana_field_data$randomColumn();
+split = 0.3;  # Roughly 30% training, 70% testing.
+validation = Ghana_field_data$filter(ee$Filter$gte('random', split));
+training = Ghana_field_data$filter(ee$Filter$lt('random', split));
+# print(Ghana_field_data$aggregate_histogram('landcover'), 'Total number of points per class');
+# print(validation$size(), 'Total number of validation');
+# print(training$size(), 'Total number of training');
+
+##################/ Collection 1999 - 2020  ###################
+
+filteredLandsat =  collectLansatImages ('LSR', roiGhana, 1999, 2020, ee$List$sequence(1, 12), nDays, TRUE);
+
+filteredLandsat = ee$ImageCollection(filteredLandsat);
+
+# Some fixed variable for easy maintenance
+rawBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'temp', 'NDVI', 'NDWI'));
+
+filledHarmonic = harmonic_fill(filteredLandsat, rawBands, harmonics);
+
+fitBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$
+  map(ee_utils_pyfunc(function(band){
+    return (ee$String(band)$cat('_')$cat('filled'));
+  }));
+
+fittedHarmonic = harmonic_fit(filledHarmonic, fitBands, harmonics, lagDays);
+
+
+##################/ Unsupervised classification 2000 - 2002  ###################
+
+classificationBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$
+  map(ee_utils_pyfunc(function(band){
+    return (ee$String(band)$cat('_')$cat('filled')$cat('_')$cat('fitted'));
+  }));
+fittedHarmonic_2000 = fittedHarmonic$select(classificationBands)$
+  filterDate('2000-01-01', '2002-12-31');
+
+bandSeries_2000 = fittedHarmonic_2000$toBands();
+
+##################/ Unsupervised classification 2010 - 2012  ###################
+
+fittedHarmonic_2010 = fittedHarmonic$select(classificationBands)$
+  filterDate('2010-01-01', '2012-12-31');
+
+bandSeries_2010 = fittedHarmonic_2010$toBands();
+
+##################/ Unsupervised classification 2018 - 2020  ###################
+
+fittedHarmonic_2018 = fittedHarmonic$select(classificationBands)$
+  filterDate('2018-01-01', '2020-12-31');
+
+bandSeries_2018 = fittedHarmonic_2018$toBands();
+
+training_2018 = bandSeries_2018$sampleRegions(
+  collection =  training,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/training_2018")
+if(!asset_exists("training_2018", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = training_2018,
+    description = "training_2018",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+
+validation_2018 = bandSeries_2018$sampleRegions(
+  collection =  validation,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/validation_2018")
+if(!asset_exists("validation_2018", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = validation_2018,
+    description = "validation_2018",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+# 
+# # validatedModel_2018 = validateClassification (bandSeries_2018, training_2018, validation_2018, 'landcover', 'classification', 100);
+# # print(validatedModel_2018, 'Validation 2018')
+
+###################################/
+
+training_2010 = bandSeries_2010$sampleRegions(
+  collection =  training,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/training_2010")
+if(!asset_exists("training_2010", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = training_2010,
+    description = "training_2010",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+
+validation_2010 = bandSeries_2010$sampleRegions(
+  collection =  validation,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/validation_2010")
+if(!asset_exists("validation_2010", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = validation_2010,
+    description = "validation_2010",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+# 
+# # validatedModel_2010 = validateClassification (bandSeries_2010, training_2010, validation_2010, 'landcover', 'classification', 100);
+# # print(validatedModel_2010, 'Validation 2010')
+################################/
+
+training_2000 = bandSeries_2000$sampleRegions(
+  collection =  training,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/training_2000")
+if(!asset_exists("training_2000", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = training_2000,
+    description = "training_2000",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+
+validation_2000 = bandSeries_2000$sampleRegions(
+  collection =  validation,
+  properties =  list('landcover'),
+  scale =  AgScale,
+  geometries =  TRUE,
+  tileScale =  10
+);
+
+assetId <- paste0(asset_path, "/validation_2000")
+if(!asset_exists("validation_2000", asset_path)){
+  task_vector = ee_table_to_asset(
+    collection = validation_2000,
+    description = "validation_2000",
+    assetId = assetId,
+    overwrite = FALSE
+  )
+  
+  task_vector$start()
+  ee_monitoring(task_vector)
+}
+# 
+# # validatedModel_2000 = validateClassification (bandSeries_2000, training_2000, validation_2000, 'landcover', 'classification', 100);
+# # print(validatedModel_2000, 'Validation 2000')
+
+```
+
+```{r ee-compute-03-training-and-validation-2,include=FALSE,echo=FALSE,cache=FALSE}
+
+##################/ Collection 1999 - 2020  ###################
+
+filteredLandsat =  collectLansatImages ('LSR', roiGhana, 1999, 2020, ee$List$sequence(1, 12), nDays, TRUE);
+
+filteredLandsat = ee$ImageCollection(filteredLandsat);
+# print(filteredLandsat, 'filteredLandsat')
+
+# Some fixed variable for easy maintenance
+rawBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'temp', 'NDVI', 'NDWI'));
+
+filledHarmonic = harmonic_fill(filteredLandsat, rawBands, harmonics);
+
+fitBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$
+  map(ee_utils_pyfunc(function(band){
+    return (ee$String(band)$cat('_')$cat('filled'));
+  }));
+
+fittedHarmonic = harmonic_fit(filledHarmonic, fitBands, harmonics, lagDays);
+
+##################/ 2000 - 2002  ###################
+
+classificationBands = ee$List(list('blue', 'green', 'red', 'nir', 'swir1', 'swir2'))$
+  map(ee_utils_pyfunc(function(band){
+    return (ee$String(band)$cat('_')$cat('filled')$cat('_')$cat('fitted'));
+  }));
+fittedHarmonic_2000 = fittedHarmonic$select(classificationBands)$
+  filterDate('2000-01-01', '2002-12-31');
+
+bandSeries_2000 = fittedHarmonic_2000$toBands();
+
+##################/ 2010 - 2012  ###################
+
+fittedHarmonic_2010 = fittedHarmonic$select(classificationBands)$
+  filterDate('2010-01-01', '2012-12-31');
+
+bandSeries_2010 = fittedHarmonic_2010$toBands();
+
+##################/ 2018 - 2020  ###################
+
+fittedHarmonic_2018 = fittedHarmonic$select(classificationBands)$
+  filterDate('2018-01-01', '2020-12-31');
+bandSeries_2018 = fittedHarmonic_2018$toBands();
+# print(bandSeries_2018, 'bandSeries_2018')    
+
+training_2018 = ee$FeatureCollection(paste0(asset_path, '/training_2018'));
+
+training_2010 = ee$FeatureCollection(paste0(asset_path, '/training_2010'));
+
+training_2000 = ee$FeatureCollection(paste0(asset_path, '/training_2000'));
+
+validation_2018 = ee$FeatureCollection(paste0(asset_path, '/validation_2018'));
+
+validation_2010 = ee$FeatureCollection(paste0(asset_path, '/validation_2010'));
+
+validation_2000 = ee$FeatureCollection(paste0(asset_path, '/validation_2000'));
+
+# print(training_2018$size(), 'Total number of field data points');
+# print(training_2018$aggregate_histogram('landcover'), 'Total number of training data points per class');
+
+# ####################################/
+validatedModel_2018 = validateClassification (bandSeries_2018, training_2018, validation_2018, 'landcover', 'classification', 100);
+# ee_print(validatedModel_2018, 'Validation 2018');
+
+validatedModel_2010 = validateClassification (bandSeries_2010, training_2010, validation_2010, 'landcover', 'classification', 100);
+# ee_print(validatedModel_2010, 'Validation 2010');
+
+validatedModel_2000 = validateClassification (bandSeries_2000, training_2000, validation_2000, 'landcover', 'classification', 100)
+# ee_print(validatedModel_2000, 'Validation 2000');
+
+# ee_drive_to_local_as_csv (
+#   ee_collection = getAccuracyElement(validatedModel_2018),
+#   drive_description = 'validatedModel_2018',
+#   drive_folder = 'Ghana',
+#   local_folder = 'ee_output/validatedModel_2018',
+#   overwrite = overwrite_file
+# )
+# 
+# ee_drive_to_local_as_csv (
+#   ee_collection = getAccuracyElement(validatedModel_2010),
+#   drive_description = 'validatedModel_2010',
+#   drive_folder = 'Ghana',
+#   local_folder = 'ee_output/validatedModel_2010',
+#   overwrite = overwrite_file
+# )
+# 
+# ee_drive_to_local_as_csv (
+#   ee_collection = getAccuracyElement(validatedModel_2000),
+#   drive_description = 'validatedModel_2000',
+#   drive_folder = 'Ghana',
+#   local_folder = 'ee_output/validatedModel_2000',
+#   overwrite = overwrite_file
+# )
+ee_to_drive_to_local (
+  ee_object = getAccuracyElement(validatedModel_2018),
+  drive_description = '~/Mangrove_Ghana_manuscript/Ghana_validatedModel_2018', 
+  drive_folder = 'Mangrove_Ghana_manuscript', 
+  local_folder = 'ee_output',
+  overwrite = overwrite_file,
+  ee_type = 'table',
+  file_extension = '.csv'
+)
+ee_to_drive_to_local (
+  ee_object = getAccuracyElement(validatedModel_2010),
+  drive_description = '~/Mangrove_Ghana_manuscript/Ghana_validatedModel_2010', 
+  drive_folder = 'Mangrove_Ghana_manuscript', 
+  local_folder = 'ee_output',
+  overwrite = overwrite_file,
+  ee_type = 'table',
+  file_extension = '.csv'
+)
+ee_to_drive_to_local (
+  ee_object = getAccuracyElement(validatedModel_2000),
+  drive_description = '~/Mangrove_Ghana_manuscript/Ghana_validatedModel_2000', 
+  drive_folder = 'Mangrove_Ghana_manuscript', 
+  local_folder = 'ee_output',
+  overwrite = overwrite_file,
+  ee_type = 'table',
+  file_extension = '.csv'
+)
+```
 
 Please make sure that your manuscript follows the guidelines in the 
 Guide for Authors of the relevant journal. It is not necessary to 
@@ -78,15 +1276,15 @@ and stored locally, or the url can be used as in the example header.
 
 Here is an equation:
 $$ 
-  f_{X}(x) = \left(\frac{\alpha}{\beta}\right)
-  \left(\frac{x}{\beta}\right)^{\alpha-1}
-  e^{-\left(\frac{x}{\beta}\right)^{\alpha}}; 
-  \alpha,\beta,x > 0 .
+f_{X}(x) = \left(\frac{\alpha}{\beta}\right)
+\left(\frac{x}{\beta}\right)^{\alpha-1}
+e^{-\left(\frac{x}{\beta}\right)^{\alpha}}; 
+\alpha,\beta,x > 0 .
 $$
 
 Here is another:
 \begin{align}
-  a^2+b^2=c^2.
+a^2+b^2=c^2.
 \end{align}
 
 Inline equations: $\sum_{i = 2}^\infty\{\alpha_i^\beta\}$
@@ -105,7 +1303,7 @@ Tables can also be generated using R chunks, as shown in Table \ref{tab1} for ex
 
 ```{r tab1, echo = TRUE}
 knitr::kable(head(mtcars)[,1:4], 
-    caption = "\\label{tab1}Caption centered above table"
+             caption = "\\label{tab1}Caption centered above table"
 )
 ```
 
