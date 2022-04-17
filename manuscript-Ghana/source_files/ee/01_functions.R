@@ -1,3 +1,54 @@
+ee_task_monitoring <- function (task, task_time = 5, eeTaskList = FALSE, quiet = FALSE)
+{
+  if (missing(task)) {
+    all_task <- ee_utils_py_to_r(ee$batch$Task$list())
+    task <- all_task[[1]]
+  }
+  if (is.character(task)) {
+    all_task <- ee_utils_py_to_r(ee$batch$Task$list())
+    id_tasks <- lapply(all_task, function(task) task[["id"]]) %>%
+      unlist()
+    if (any(id_tasks %in% task)) {
+      task <- all_task[[which(id_tasks %in% task)]]
+    }
+    else {
+      stop("Undefined Task ID entered")
+    }
+  }
+  if (eeTaskList) {
+    if (!quiet) {
+      cat("EETaskList:\n")
+    }
+    task_list <- mapply(function(x) {
+      sprintf("<Task %s: %s (%s)>", x$task_type, x$config,
+              x$state)
+    }, ee$batch$Task$list())
+    if (!quiet) {
+      cat("", paste0(task_list, "\n"))
+      cat("\n")
+    }
+  }
+  counter <- 0
+  while (ee_utils_py_to_r(ee$batch$Task$active(task)) & task[["state"]] !=
+         "CANCEL_REQUESTED") {
+    if (!quiet) {
+      cat(sprintf("Polling for task <id: %s, time: %ds>.\n",
+                  task[["id"]], counter))
+    }
+    counter <- counter + task_time
+    Sys.sleep(task_time)
+  }
+  task_status <- ee_utils_py_to_r(ee$batch$Task$status(task))
+  if (!quiet) {
+    cat(sprintf("State: %s\n", task_status[["state"]]))
+  }
+  if (task_status[["state"]] != "COMPLETED") {
+    message("ERROR in Earth Engine servers: ", task_status[["error_message"]])
+    stop("ee_monitoring was forced to stop before getting results")
+  }
+  invisible(task)
+}
+
 # C:\Users\User\AppData\Local\r-miniconda\envs\rgee\python.exe
 # Landsat 8 sanity 
 #' Function to mask clouds based on the pixel_qa band of Landsat 8 SR data.
@@ -966,6 +1017,7 @@ ee_to_drive_to_local <- function(ee_object, drive_description, drive_folder,
   short_descrip = tail(unlist(strsplit(drive_description, '/')), n =1)
   base_path = gsub(pattern = paste0('/', short_descrip), replacement = '', x = drive_description)
   local_path = paste0(local_folder, '/', short_descrip)
+  # return(drive_description)
   if(!drive_file_exists(drive_description)){
     if (ee_type == 'image'){
       task_vector = ee_image_to_drive(
@@ -980,6 +1032,8 @@ ee_to_drive_to_local <- function(ee_object, drive_description, drive_folder,
         maxPixels = maxPixels,
         fileFormat = 'GeoTIFF'
       )
+      task_vector$start()
+      ee_task_monitoring(task_vector)
     } else if (ee_type == 'table'){
       if(raster::extension(drive_description) %in% c('.shp')){
         task_vector = ee_table_to_drive(
@@ -991,6 +1045,8 @@ ee_to_drive_to_local <- function(ee_object, drive_description, drive_folder,
           fileFormat = 'SHP',
           selectors = drive_selectors
         )
+        task_vector$start()
+        ee_task_monitoring(task_vector)
       } else if (raster::extension(drive_description) %in% c('.csv', '.CSV')){
         task_vector = ee_table_to_drive(
           collection = ee_object,
@@ -1001,13 +1057,16 @@ ee_to_drive_to_local <- function(ee_object, drive_description, drive_folder,
           fileFormat = 'CSV',
           selectors = drive_selectors
         )
+        task_vector$start()
+        ee_task_monitoring(task_vector)
       }
     }
-    task_vector$start()
-    ee_monitoring(task_vector)
+    # task_vector$start()
+    # ee_task_monitoring(task_vector)
   }
   # task_vector$start()
-  # ee_monitoring(task_vector)
+  # ee_task_monitoring(task_vector)
+  # local_path
   if(!file.exists(local_path)){
     drive_download(
       file = drive_description,
@@ -1030,3 +1089,4 @@ gplot_data <- function(x, maxpixels=ncell(x),...){
   
   dat <- cbind(coords, dat)
 }
+

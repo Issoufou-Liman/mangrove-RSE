@@ -14,7 +14,7 @@ harmonics = 2
 ## load all functions
 
 ## Should local files with the same name be overwritten?
-overwrite_file = TRUE
+overwrite_file = FALSE
 
 ## region of interest
 checkPointGhana = ee$Geometry$Point(list(-1.1993780600423731,5.148891150785175));
@@ -27,20 +27,21 @@ roiGhana = ee$Geometry$Polygon(
             list(-3.2741066938542573,9.266252547435618),
             list(-3.2795998579167573,5.092430973484513))), NULL, FALSE);
 
-lapply(list('.shp', '.shx', 'prj', 'dbf', 'cpg'), function(i){
-  ee_to_drive_to_local (
-    ee_object = ee$FeatureCollection(list(ee$Feature(roiGhana))),
-    drive_description = '~/Ghana_Manuscript/roiGhana', 
-    drive_folder = 'Ghana_Manuscript', 
-    region = roiGhana, 
-    scale = AgScale,
-    maxPixels = 1e13, 
-    local_folder  = 'ee_output/roiGhana',
-    overwrite = overwrite_file,
-    ee_type = 'table',
-    file_extension = i
-  )
-})
+# map(list('.shp', '.shx', 'prj', 'dbf', 'cpg'), function(i){
+#   ee_to_drive_to_local (
+#     ee_object = ee$FeatureCollection(list(ee$Feature(roiGhana))),
+#     drive_description = '~/Mangrove_Ghana_manuscript/roiGhana', 
+#     drive_folder = 'Mangrove_Ghana_manuscript', 
+#     region = roiGhana, 
+#     scale = AgScale,
+#     maxPixels = 1e13, 
+#     local_folder  = 'ee_output/roiGhana',
+#     overwrite = overwrite_file,
+#     ee_type = 'table',
+#     file_extension = i
+#   )
+# })
+
 ## Define a palette for the 17 land cover classes.
 myPalette = c(
   'aec3d4', # 1
