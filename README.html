@@ -388,7 +388,13 @@ we used time series of remotely-sensed data from Landsat to study the
 dynamics of mangroves vegetation in Ghana.</p>
 <p>This repository contains Google Earth Engine and R codes for a
 spatio-temporal analysis of mangrove vegetation for Ghana</p>
-<pre><code>            </code></pre>
+<p>To replicate this work, you need to make sure that you have a working
+installation of <code>Google Earth Engine</code> <code>python API</code>
+for use in <code>rgee</code> package. Then, look for the following line
+of code under the chunk <code>Setting-the-Scene</code> to update you
+credentials.</p>
+<pre><code> ee_Initialize(user = &#39;your user name&#39;, drive = TRUE, gcs = FALSE)
+           </code></pre>
 
 
 
