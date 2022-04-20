@@ -1,0 +1,31 @@
+<VRTDataset rasterXSize="16573" rasterYSize="16931">
+  <SRS>GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]</SRS>
+  <GeoTransform>-3.2797491023203733e+000, 2.6949458523585642e-004, 0.0000000000000000e+000, 9.2773510967443595e+000, 0.0000000000000000e+000,-2.6949458523585642e-004</GeoTransform>
+  <VRTRasterBand dataType="Float64" band="1">
+    <SimpleSource>
+      <SourceFilename relativeToVRT="1">fittedHarmonic_1999_2020_rmse-0000000000-0000000000.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="9472" RasterYSize="9472" DataType="Float64" BlockXSize="256" BlockYSize="256" />
+      <SrcRect xOff="0" yOff="0" xSize="9472" ySize="9472" />
+      <DstRect xOff="0" yOff="0" xSize="9472" ySize="9472" />
+    </SimpleSource>
+  </VRTRasterBand>
+  <VRTRasterBand dataType="Float64" band="2">
+    <SimpleSource>
+      <SourceFilename relativeToVRT="1">fittedHarmonic_1999_2020_rmse-0000000000-0000009472.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="7101" RasterYSize="9472" DataType="Float64" BlockXSize="256" BlockYSize="256" />
+      <SrcRect xOff="0" yOff="0" xSize="7101" ySize="9472" />
+      <DstRect xOff="9472" yOff="0" xSize="7101" ySize="9472" />
+    </SimpleSource>
+  </VRTRasterBand>
+  <VRTRasterBand dataType="Float64" band="3">
+    <SimpleSource>
+      <SourceFilename relativeToVRT="1">fittedHarmonic_1999_2020_rmse-0000009472-0000009472.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="7101" RasterYSize="7459" DataType="Float64" BlockXSize="256" BlockYSize="256" />
+      <SrcRect xOff="0" yOff="0" xSize="7101" ySize="7459" />
+      <DstRect xOff="9472" yOff="9472" xSize="7101" ySize="7459" />
+    </SimpleSource>
+  </VRTRasterBand>
+</VRTDataset>
