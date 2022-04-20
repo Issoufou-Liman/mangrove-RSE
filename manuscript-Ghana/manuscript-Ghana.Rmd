@@ -98,7 +98,7 @@ ksource <- function(x, ...) {
 ## Should local files with the same name be overwritten?
 overwrite_file = FALSE
 
-ee_Initialize(user = 'limanissoufou', drive = TRUE, gcs = FALSE)
+ee_Initialize(drive = TRUE, gcs = FALSE)
 # ee_Initialize(email = params$email, drive = params$drive, gcs = params$gcs)
 
 asset_home = ee_get_assethome()
